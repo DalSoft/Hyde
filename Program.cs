@@ -1,4 +1,5 @@
-﻿using Mono.Options;
+﻿using Microsoft.VisualBasic.FileIO;
+using Mono.Options;
 using Newtonsoft.Json;
 using RazorEngine;
 using System;
@@ -17,18 +18,21 @@ namespace Hyde
             var layouts = string.Empty;
             var json = string.Empty;
             var output = string.Empty;
+            var assets = string.Empty;
             var help = false;
             dynamic model = null;
             
             //TODO add base template args support
+            // @{ Layouts are case sensitive
             var options = new OptionSet
-                              {
-                                      {"s|source=", "The folder with the .cshtml files you want to generate (required).", v => source = v},
-                                      {"l|layouts=", "Layout file(s) to use, use | as a delimiter for multiple files (optional).", v => layouts = v},
-                                      {"j|json=", "The model to use specified using JSON (optional).", v => json = v},
-                                      {"o|output=", "The output folder where static site is generated (required).", v => output = v},
-                                      {"h|help",  "Show this message and exit", v => help = true},
-                                  };
+            {
+                    {"s|source=", "The folder with the .cshtml files you want to generate (required).", v => source = v},
+                    {"l|layouts=", "Layout file(s) to use, use | as a delimiter for multiple files. (optional).", v => layouts = v},
+                    {"j|json=", "The model to use specified using JSON (optional).", v => json = v},
+                    {"a|assets=", "Assets to be copied to the static website.", v => assets = v},
+                    {"o|output=", "The output folder where static site is generated (required).", v => output = v},
+                    {"h|help",  "Show this message and exit", v => help = true},
+            };
 
             options.Parse(args);
 
@@ -38,7 +42,8 @@ namespace Hyde
                 source = projectPath + @"\wwwtest";
                 output = projectPath + @"\output";
                 json = "{Title:'Test Hyde', H2:'Test Heading', IndexContent:'Some Test content for index', Page1Content:'Some Test content for page1', Page2Content:'Some Test content for page2'}";
-                layouts = projectPath + @"\wwwtest\layout.cshtml|" + projectPath + @"\wwwtest\layout2.cshtml";
+                layouts = projectPath + @"\wwwtest\LaYout.cshtml|" + projectPath + @"\wwwtest\layout2.cshtml";
+                assets = projectPath + @"\wwwtest\assets";
             }
 
             if (help)
@@ -49,7 +54,7 @@ namespace Hyde
                 Environment.Exit(0);
             }
             
-            if (source == null && output == null)
+            if (source == string.Empty && output == string.Empty)
             {
                 Console.WriteLine("You need to provide -source and -output arguments. Use -help for usage.");
                 if (Debugger.IsAttached) Console.ReadLine();
@@ -63,7 +68,7 @@ namespace Hyde
                 Environment.Exit(1);
             }
 
-            if (json!=null)
+            if (json!=string.Empty)
             {
                 try
                 {
@@ -75,11 +80,11 @@ namespace Hyde
                 }
             }
 
-            if (layouts != null) //Parse Layouts first.
+            if (layouts != string.Empty) //Parse Layouts first.
             {   
-                layouts.
-                    Split("|".ToCharArray() , StringSplitOptions.RemoveEmptyEntries)
-                    .Select(x=> new {filePath=x, cacheName = new FileInfo(x).Name})
+                layouts.ToLower()
+                    .Split("|".ToCharArray() , StringSplitOptions.RemoveEmptyEntries)
+                    .Select(x => new { filePath = x, cacheName = Path.GetFileName(x) })
                     .ToList()
                     .ForEach(x=> Razor.Compile(File.ReadAllText(x.filePath), x.cacheName));
                 
@@ -93,25 +98,31 @@ namespace Hyde
             var cshtml = Directory.GetFiles(source, "*.cshtml")
                     .Select(x=>x.ToLower())
                     .Except(layouts.ToLower().Split("|".ToCharArray(), StringSplitOptions.RemoveEmptyEntries))
-                    .Select(x => new { filePath = x, razorTemplate = File.ReadAllText(x), cacheName = new FileInfo(x).Name, model })
+                    .Select(x => new { filePath = x, razorTemplate = File.ReadAllText(x), cacheName = Path.GetFileName(x), model })
                     .ToList();
 
             Razor.ParseMany(models: cshtml.Select(x => x.model), razorTemplates: cshtml.Select(x => x.razorTemplate), cacheNames: cshtml.Select(x => x.cacheName), parallel: true);
 
             foreach (var file in cshtml)
             {
-                var outputFilePath = output + @"\" + new FileInfo(file.filePath).Name.Replace(".cshtml", ".html");
+                var outputFileName = Path.GetFileName(file.filePath);
+                var outputFilePath = output + @"\" + Path.ChangeExtension(outputFileName, "html");
                 
-                using (var outputFile = File.CreateText(outputFilePath))
+                using (var outputBody = File.CreateText(outputFilePath))
                 {
-                    outputFile.Write(Razor.Parse(file.razorTemplate, model ?? new { }, file.cacheName));
+                    outputBody.Write(Razor.Parse(file.razorTemplate, model ?? new { }, file.cacheName));
                 }
-                
+            }
+
+            if (assets!=string.Empty && Directory.Exists(assets))
+            {
+                FileSystem.CopyDirectory(assets, output + @"\" + Path.GetFileName(assets));
             }
 
             Environment.Exit(0); 
         }
 
+        
     }
 
 }
