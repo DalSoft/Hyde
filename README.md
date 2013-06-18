@@ -1,4 +1,4 @@
-# Hyde
+# Hyde - build a static website using Razor and the command line
 
 Lightweight command line over RazorEngine. Quick hour hack for a project I'm working on to put a very simple command line over RazorEngine to build a static website using Razor templates.
 
